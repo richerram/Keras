@@ -38,12 +38,21 @@ def my_init (shape, dtype=None):
 
 model.add(Dense(64,kernel_initializer=my_init))
 
-fig, axes = plt.subplots(5,2, figsize = (12,16))
-fig.subplots_adjust(hspace=0.5, wspace=0.5)
+# fig, axes = plt.subplots(5,2, figsize = (12,16))
+# fig.subplots_adjust(hspace=0.5, wspace=0.5)
+#
+# weight_layers = [layer for layer in model.layers if len (layer.weights) > 0]
+#
+# for i, layer in enumerate (weight_layers):
+#     for j in [0, 1]:
+#         axes[i, j].hist(layer.weights[j].numpy().flatten(), align='left')
+#         axes[i, j].set_title(layer.weights[j].name)
 
-weight_layers = [layer for layer in model.layers if len (layer.weights) > 0]
+opt = tf.keras.optimizers.Adam(learning_rate=0.005)
+acc = tf.keras.metrics.SparseCategoricalAccuracy()
+mae = tf.keras.metrics.MeanAbsoluteError()
 
-for i, layer in enumerate (weight_layers):
-    for j in [0, 1]:
-        axes[i, j].hist(layer.weights[j].numpy().flatten(), align='left')
-        axes[i, j].set_title(layer.weights[j].name)
+
+model.compile(optimizer=opt, loss="sparse_categorical_crossentropy", metrics=[acc, mae])
+
+print ("Optimizer: {}\nLearning rate: {}\nLoss: {}\nMetrics: {}".format(model.optimizer, model.optimizer.lr, model.loss, model.metrics))
