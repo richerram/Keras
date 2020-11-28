@@ -33,7 +33,10 @@ x_test = x_test[...,np.newaxis]
 # plt.show()
 # print (f"label: {labels[y_train[i]]}")
 
-history = model.fit(x_train, y_train, epochs=10, verbose=2)
+#history = model.fit(x_train, y_train, epochs=10, verbose=2)
 df = pd.DataFrame(history.history)
 
 loss_plot = df.plot(y="loss")
+
+model.evaluate(x_test, y_test)
+model.predict(x_test[49])
