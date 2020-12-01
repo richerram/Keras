@@ -20,20 +20,42 @@ train_x, test_x, train_y, test_y = train_test_split(data, target, test_size=0.1)
 
 #print ("train_x: {}\ntest_x: {}\ntrain_y: {}\ntest_y: {}".format(train_x.shape, test_x.shape, train_y.shape, test_y.shape))
 
-'''CALLBACKS Example
-class my_callback(Callback):
-
-    def on_train_begin(self, logs=None):
-        #Do something at the start of the training
-
-    def on_train_batch_begin(self, batch, logs=None):
-        #Do something at the start of every batch iteration
-
+###############TRAINING CALLBACKS
+class TrainingCallback (Callback):
+    def on_train_begin (self, logs=None):
+        print ('Starting training...')
+    def on_epoch_begin (self, epoch, logs=None):
+        print(f"Starting epoch {epoch}")
+    def on_train_batch_begin (self, batch, logs=None):
+        print (f"Training: Starting batch {batch}")
+    def on_train_batch_end (self, batch, logs=None):
+        print (f"Training: Ending batch {batch}")
     def on_epoch_end(self, epoch, logs=None):
-        #Do something at the end of every Epoch
+        print(f"Ending epoch {epoch}")
+    def on_train_end (self, logs=None):
+        print ('Ending training...')
 
-history = model.fit (train_x, train_y, epochs=100, callbacks = [my_callback()]
-'''
+###############TESTING CALLBACKS
+class TestingCallback (Callback):
+    def on_test_begin (self, logs=None):
+        print ('Starting testing...')
+    def on_test_batch_begin (self, batch, logs=None):
+        print (f"Testing: Starting batch {batch}")
+    def on_test_batch_end (self, batch, logs=None):
+        print (f"Testing: Ending batch {batch}")
+    def on_test_end (self, logs=None):
+        print ('Ending testing...')
+
+###############PREDICTION CALLBACKS
+class PredictCallback (Callback):
+    def on_predict_begin (self, logs=None):
+        print ('Starting prediction...')
+    def on_predict_batch_begin (self, batch, logs=None):
+        print (f"Prediction: Starting batch {batch}")
+    def on_predict_batch_end (self, batch, logs=None):
+        print (f"Prediction: Ending batch {batch}")
+    def on_predict_end (self, logs=None):
+        print ('Ending prediction...')
 
 def get_regularised_model(wd, rate):
     model = Sequential([
@@ -52,13 +74,15 @@ def get_regularised_model(wd, rate):
     ])
     return model
 
-model=get_regularised_model(1e-2, 0.1)
-model.compile(optimizer="adam", loss="mse", metrics=["mae"])
-hist = model.fit(train_x, train_y, epochs=100, validation_split=0.15, batch_size=64, verbose=False)
+model=get_regularised_model(1e-5, 0.3)
+model.compile(optimizer="adam", loss="mse")
+hist = model.fit(train_x, train_y, epochs=3, validation_split=0.15, batch_size=128, verbose=False, callbacks=[TrainingCallback()])
 for i in hist.history.keys():
     print (i, hist.history[i][-1])
-histo2 = model.evaluate(test_x, test_y, verbose=2)
+histo2 = model.evaluate(test_x, test_y, verbose=2, callbacks=[TestingCallback()])
 print ("In test sets {} ".format(histo2))
+
+model.predict(test_x, verbose=2, callbacks=[PredictCallback()])
 
 #PLOTTING
 plt.plot(hist.history["loss"])
