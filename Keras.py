@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras import regularizers
 from sklearn.datasets import load_diabetes
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
@@ -16,24 +17,32 @@ target = diabetes["target"]
 target = (target - target.mean(axis=0)) / target.std()
 train_x, test_x, train_y, test_y = train_test_split(data, target, test_size=0.1)
 
-print ("train_x: {}\ntest_x: {}\ntrain_y: {}\ntest_y: {}".format(train_x.shape, test_x.shape, train_y.shape, test_y.shape))
+#print ("train_x: {}\ntest_x: {}\ntrain_y: {}\ntest_y: {}".format(train_x.shape, test_x.shape, train_y.shape, test_y.shape))
 
-def get_model():
+def get_regularised_model(wd, rate):
     model = Sequential([
-        Dense(128, activation="relu", input_shape=(train_x.shape[1],)),
-        Dense(128, activation="relu"),
-        Dense(128, activation="relu"),
-        Dense(128, activation="relu"),
-        Dense(128, activation="relu"),
-        Dense(128, activation="relu"),
+        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd), input_shape=(train_x.shape[1],)),
+        Dropout (rate),
+        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
+        Dropout(rate),
+        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
+        Dropout(rate),
+        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
+        Dropout(rate),
+        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
+        Dropout(rate),
+        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
         Dense(1)
     ])
     return model
 
-model=get_model()
+model=get_regularised_model(1e-2, 0.1)
 model.compile(optimizer="adam", loss="mse", metrics=["mae"])
 hist = model.fit(train_x, train_y, epochs=100, validation_split=0.15, batch_size=64, verbose=False)
-model.evaluate(test_x, test_y, verbose=2)
+for i in hist.history.keys():
+    print (i, hist.history[i][-1])
+histo2 = model.evaluate(test_x, test_y, verbose=2)
+print ("In test sets {} ".format(histo2))
 
 #PLOTTING
 plt.plot(hist.history["loss"])
