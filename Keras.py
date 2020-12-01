@@ -1,96 +1,80 @@
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback
+from tensorflow.keras.layers import Dense
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras import regularizers
+from tensorflow.keras.callbacks import Callback
 from sklearn.datasets import load_diabetes
 from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
 
-diabetes = load_diabetes()
+dataLoad = load_diabetes()
 
-#print (diabetes["DESCR"])
-#print (diabetes.keys())
+data = dataLoad['data']
+targets = dataLoad['target']
 
-data = diabetes["data"]
-target = diabetes["target"]
+train_x, test_x, train_y, test_y = train_test_split(data, targets, test_size=0.1)
 
-target = (target - target.mean(axis=0)) / target.std()
-train_x, test_x, train_y, test_y = train_test_split(data, target, test_size=0.1)
+model = Sequential([
+    Dense(128, activation="relu", input_shape=(train_x.shape[1],)),
+    Dense(64, activation="relu"),
+    tf.keras.layers.BatchNormalization(),
+    Dense(64, activation="relu"),
+    Dense(64, activation="relu"),
+    Dense(1)
+])
 
-#print ("train_x: {}\ntest_x: {}\ntrain_y: {}\ntest_y: {}".format(train_x.shape, test_x.shape, train_y.shape, test_y.shape))
+'''model.compile(optimizer="adam", loss="mse", metrics=["mae"])
 
-###############TRAINING CALLBACKS
-class TrainingCallback (Callback):
-    def on_train_begin (self, logs=None):
-        print ('Starting training...')
-    def on_epoch_begin (self, epoch, logs=None):
-        print(f"Starting epoch {epoch}")
-    def on_train_batch_begin (self, batch, logs=None):
-        print (f"Training: Starting batch {batch}")
-    def on_train_batch_end (self, batch, logs=None):
-        print (f"Training: Ending batch {batch}")
+class LossAndMetricsCallbacks(Callback):
+    def on_train_batch(self, batch, logs=None):
+        if batch%2==0:
+            print (f"After batch no.{batch} the loss is {logs['loss']}")
+    def on_test_batch(self, batch, logs=None):
+        print(f"After batch no.{batch} the loss is {logs['loss']}")
     def on_epoch_end(self, epoch, logs=None):
-        print(f"Ending epoch {epoch}")
-    def on_train_end (self, logs=None):
-        print ('Ending training...')
+        print (f"Epoch {epoch}: Average loss is {logs['loss']} and MAE is {logs['mae']}")
+    def on_predict_batch_end(self, batch, logs=None):
+        print (f"Finished prediction on batch: {batch}")
 
-###############TESTING CALLBACKS
-class TestingCallback (Callback):
-    def on_test_begin (self, logs=None):
-        print ('Starting testing...')
-    def on_test_batch_begin (self, batch, logs=None):
-        print (f"Testing: Starting batch {batch}")
-    def on_test_batch_end (self, batch, logs=None):
-        print (f"Testing: Ending batch {batch}")
-    def on_test_end (self, logs=None):
-        print ('Ending testing...')
+history = model.fit(train_x, train_y, batch_size=100, epochs=20, verbose=False, callbacks=[LossAndMetricsCallbacks()])
 
-###############PREDICTION CALLBACKS
-class PredictCallback (Callback):
-    def on_predict_begin (self, logs=None):
-        print ('Starting prediction...')
-    def on_predict_batch_begin (self, batch, logs=None):
-        print (f"Prediction: Starting batch {batch}")
-    def on_predict_batch_end (self, batch, logs=None):
-        print (f"Prediction: Ending batch {batch}")
-    def on_predict_end (self, logs=None):
-        print ('Ending prediction...')
+evaluation = model.evaluate(test_x, test_y, batch_size=10, verbose=False, callbacks=[LossAndMetricsCallbacks()])
 
-def get_regularised_model(wd, rate):
-    model = Sequential([
-        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd), input_shape=(train_x.shape[1],)),
-        Dropout (rate),
-        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
-        Dropout(rate),
-        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
-        Dropout(rate),
-        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
-        Dropout(rate),
-        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
-        Dropout(rate),
-        Dense(128, activation="relu", kernel_regularizer=regularizers.l2(wd)),
-        Dense(1)
-    ])
-    return model
+prediction = model.predict(test_x, verbose=False, batch_size=10, callbacks=[LossAndMetricsCallbacks()]'''
 
-model=get_regularised_model(1e-5, 0.3)
-model.compile(optimizer="adam", loss="mse")
-hist = model.fit(train_x, train_y, epochs=3, validation_split=0.15, batch_size=128, verbose=False, callbacks=[TrainingCallback()])
-for i in hist.history.keys():
-    print (i, hist.history[i][-1])
-histo2 = model.evaluate(test_x, test_y, verbose=2, callbacks=[TestingCallback()])
-print ("In test sets {} ".format(histo2))
+################################################################
+###################ADVANCED CALLBACK############################
+################################################################
 
-model.predict(test_x, verbose=2, callbacks=[PredictCallback()])
+lr_schedule = [(4, 0.30), (7, 0.02), (11, 0.005), (15, 0.007)]
+def get_new_epoch_lr (epoch, lr):
+    epoch_in_sched = [i for i in range(len(lr_schedule)) if lr_schedule[i][0] == int(epoch)]
+    if len(epoch_in_sched):
+        return lr_schedule[epoch_in_sched[0]][1]
+    else:
+        return lr
 
-#PLOTTING
-plt.plot(hist.history["loss"])
-plt.plot(hist.history["val_loss"])
-plt.title("Loss vs Validation Loss")
-plt.ylabel("Loss")
-plt.xlabel("Epochs")
-plt.legend(["Training", "Validation"], loc="upper right")
-plt.show()
 
-#THIS IS OVERFITTING
+class LRScheduler(tf.keras.callbacks.Callback):
+
+    def __init__(self, new_lr):
+        super(LRScheduler, self).__init__()
+        # Add the new learning rate function to our callback
+        self.new_lr = new_lr
+
+    def on_epoch_begin(self, epoch, logs=None):
+        # Make sure that the optimizer we have chosen has a learning rate, and raise an error if not
+        if not hasattr(self.model.optimizer, 'lr'):
+            raise ValueError('Error: Optimizer does not have a learning rate.')
+
+        # Get the current learning rate
+        curr_rate = float(tf.keras.backend.get_value(self.model.optimizer.lr))
+
+        # Call the auxillary function to get the scheduled learning rate for the current epoch
+        scheduled_rate = self.new_lr(epoch, curr_rate)
+
+        # Set the learning rate to the scheduled learning rate
+        tf.keras.backend.set_value(self.model.optimizer.lr, scheduled_rate)
+        print('Learning rate for epoch {} is {:7.3f}'.format(epoch, scheduled_rate))
+
+model.compile(loss='mse', optimizer="adam", metrics=['mae', 'mse'])
+
+new_history = model.fit(train_x, train_y, epochs=20,  batch_size=100, callbacks=[LRScheduler(get_new_epoch_lr)], verbose=False)
