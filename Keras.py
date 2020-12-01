@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras import regularizers
@@ -18,6 +19,21 @@ target = (target - target.mean(axis=0)) / target.std()
 train_x, test_x, train_y, test_y = train_test_split(data, target, test_size=0.1)
 
 #print ("train_x: {}\ntest_x: {}\ntrain_y: {}\ntest_y: {}".format(train_x.shape, test_x.shape, train_y.shape, test_y.shape))
+
+'''CALLBACKS Example
+class my_callback(Callback):
+
+    def on_train_begin(self, logs=None):
+        #Do something at the start of the training
+
+    def on_train_batch_begin(self, batch, logs=None):
+        #Do something at the start of every batch iteration
+
+    def on_epoch_end(self, epoch, logs=None):
+        #Do something at the end of every Epoch
+
+history = model.fit (train_x, train_y, epochs=100, callbacks = [my_callback()]
+'''
 
 def get_regularised_model(wd, rate):
     model = Sequential([
