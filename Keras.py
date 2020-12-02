@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.callbacks import Callback
+from tensorflow.keras.callbacks import Callback, EarlyStopping
 from sklearn.datasets import load_diabetes
 from sklearn.model_selection import train_test_split
 
@@ -77,4 +77,27 @@ class LRScheduler(tf.keras.callbacks.Callback):
 
 model.compile(loss='mse', optimizer="adam", metrics=['mae', 'mse'])
 
-new_history = model.fit(train_x, train_y, epochs=20,  batch_size=100, callbacks=[LRScheduler(get_new_epoch_lr)], verbose=False)
+new_history = model.fit(train_x, train_y, epochs=100,  batch_size=100, validation_split=0.15, verbose=False, callbacks=[EarlyStopping(patience=5)])
+# Look how it stops at EPOCh 20-ish
+
+import matplotlib.pyplot as plt
+
+fig = plt.figure (figsize=(5, 12))
+
+fig.add_subplot(211)
+
+plt.plot(new_history.history['loss'])
+plt.plot(new_history.history["val_loss"])
+plt.title('Loss vs Val_loss')
+plt.xlabel('Epoch')
+plt.ylabel("Loss")
+plt.legend(['Training', 'Validation'], loc="upper right")
+
+fig.add_subplot(212)
+
+plt.plot(new_history.history["mae"])
+plt.plot(new_history.history['val_mae'])
+plt.title('MAE vs Val_MAE')
+plt.xlabel('Epochs')
+plt.ylabel('MAE')
+plt.legend(['Training', 'Validation'], loc="upper right")
