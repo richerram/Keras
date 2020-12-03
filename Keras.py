@@ -1,37 +1,53 @@
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.losses import BinaryCrossentropy
 
-model = Sequential([
-    Dense(64, activation='sigmoid', input_shape=(10,)),
-    Dense(1)
-])
+(train_x, train_y), (test_x, test_y) = tf.keras.datasets.cifar10.load_data()
 
-model.compile (optimizer='sgd', loss=BinaryCrossentropy(from_logits=True))
+train_x = train_x [:10000]
+train_y = train_y [:10000]
+test_x = test_x [:1000]
+test_y = test_y [:1000]
 
-checkpoint = ModelCheckpoint('my_model.h5', save_weights_only=True)
+import matplotlib.pyplot as plt
 
-model.fit(X_train, y_train, epochs=10, callbacks=[checkpoint])
+# fig, ax = plt.subplots(1, 10, figsize=(10,1))
+# for i in range(10):
+#     ax[i].set_axis_off()
+#     ax[i].imshow(train_x[i])
 
-############### Then you can LOAD the weights
-model.load_weights(('my_model.h5'))
+def get_test_accuracy (model, x, y):
+    test_loss, test_accuracy = model.evaluate (x, y, verbose=0)
+    print (f'accuracy {test_accuracy}')
 
-############## Another EXAMPLE to save weights after the model has been trained
-###### the same architecture of your model needs to be built.
+def get_model():
+    model = Sequential([
+        Conv2D(filters=16, input_shape=(32,32,3), kernel_size=(3,3), activation='relu', name='conv_1'),
+        Conv2D(filters=8, activation='relu', kernel_size=(3,3), name='conv_2'),
+        MaxPooling2D(pool_size=(4,4), name='pool_1'),
+        Flatten(name='flatten_1'),
+        Dense(32, activation='relu', name='dense_1'),
+        Dense(units=10, activation='softmax', name='dense_2' )
+    ])
 
-from tensorflow.keras.callbacks import EarlyStopping
+    model.compile(optimizer="adam", loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-model = Sequential([
-    Dense(64, activation='sigmoid', input_shape=(10,)),
-    Dense(1)
-])
+    return model
 
-model.compile(optimizer='sgd', loss='mse', metrics=['mae'])
+model = get_model()
+print (get_test_accuracy(model, test_x, test_y))
 
-earlystopping = EarlyStopping(monitor='val_mae', patience=2)
+############## CHECKPOINT #######################
+#################################################
+checkpoint_path = 'model_checkpoints/checkpoint'
+checkpoint = ModelCheckpoint(filepath=checkpoint_path, frequency='epoch', save_weights_only=True, verbose=False)
 
-model.fit(X_train, y_train, batch_size=10, validation_split=0.15, callbacks=[earlystopping])
+#odel.fit (train_x, train_y, epochs=100, callbacks=[checkpoint])
 
-#HERE!!!!!
-model.save_weights('my_model.h5')
+model.load_weights(checkpoint_path)
+print(get_test_accuracy(model, test_x, test_y))
+
+######################Clear Directory (on Lixux command)########################
+# ! rm -r model_checkpoints
