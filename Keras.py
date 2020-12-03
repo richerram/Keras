@@ -5,6 +5,8 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.losses import BinaryCrossentropy
 
 (train_x, train_y), (test_x, test_y) = tf.keras.datasets.cifar10.load_data()
+train_x = train_x/ 255.0
+test_x = test_x / 255.0
 
 train_x = train_x [:10000]
 train_y = train_y [:10000]
@@ -44,10 +46,21 @@ print (get_test_accuracy(model, test_x, test_y))
 checkpoint_path = 'model_checkpoints/checkpoint'
 checkpoint = ModelCheckpoint(filepath=checkpoint_path, frequency='epoch', save_weights_only=True, verbose=False)
 
-#odel.fit (train_x, train_y, epochs=100, callbacks=[checkpoint])
+model.fit (train_x, train_y, epochs=100, callbacks=[checkpoint], verbose=False)
 
 model.load_weights(checkpoint_path)
 print(get_test_accuracy(model, test_x, test_y))
 
-######################Clear Directory (on Lixux command)########################
-# ! rm -r model_checkpoints
+######################More Examples########################
+'''
+checkpoint5000 = ModelCheckpoint(filepath='checkpoint_path_5000',
+                                 save_weights_only=True,
+                                 save_freq=5000,
+                                 verbose=1)
+checkpointBEST = ModelCheckpoint(filepath='checkpoint_path_BEST',
+                                 save_weights_only=True,
+                                 save_best_only=True,
+                                 save_freq='epoch',
+                                 monitor='val_accuracy',
+                                 verbose=1)
+'''
