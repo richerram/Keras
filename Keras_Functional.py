@@ -1,80 +1,56 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Dense, Flatten, Input
+import tensorflow as tf
 
-def create_model(layerOne=True, layerTwo=True, layerThree=True):
+# Check all devices
+print (f'All Devices:\n{tf.config.list_physical_devices()}\n')
 
-    model = Sequential([
-        Dense(4, input_shape=(4,), activation='relu', kernel_initializer='random_uniform', bias_initializer='ones', trainable=layerOne),
-        Dense(2, activation='relu', kernel_initializer='lecun_normal', bias_initializer='ones', trainable=layerTwo),
-        Dense(4, activation='softmax', trainable=layerThree)
-    ])
-    x = len(model.trainable_variables)
-    y = len(model.non_trainable_variables)
-    print(x)
-    print(y)
-    return model
+#Check GPU devices
+print('GPU Devices:\n{}\n'.format(tf.config.list_physical_devices('GPU')))
 
-model = create_model()
+#Check CPU devices
+print('CPU Devices:\n{}\n'.format(tf.config.list_physical_devices('CPU')))
 
-# We retrieve the weights and biases from each layer before training.
-def w_layers(model):
-    return [e.weights[0].numpy() for e in model.layers]
-w0_layers = w_layers(model)
+#Get devices names
+print(f'Name of the GPU device: {tf.test.gpu_device_name()}\n')
 
-def b_layers(model):
-    return [e.bias.numpy() for e in model.layers]
-b0_layers = b_layers(model)
+# We can specify which tensor runs on which device, first we will check where it is placed automatically.
+x = tf.random.uniform([3,3])
+print (f'Device where X tensor is on: {x.device}\n')
 
+print("Is the Tensor on CPU #0:  "),
+print(x.device.endswith('CPU:0'))
+print('')
+print("Is the Tensor on GPU #0:  "),
+print(x.device.endswith('GPU:0'))
 
-# Create a random dataset with train and test sets being equal so we try to learn the identity matrix.
-x_train = np.random.random((100,4))
-y_train = x_train
+# Here we can place an operatino manually and check processing times.
+import time
 
-x_test = np.random.random((20,4))
-y_test = x_test
+def time_add(x):
+    start = time.time()
+    for loop in range(10):
+        tf.add(x,x)
+    result = time.time()-start
+    print ('Matrix addition (10 loops): {:0.2f}ms'.format(1000*result))
 
-# Compile and train.
-model.compile(optimizer='adam', loss='mse', metrics=['acc'])
-model.fit(x_train, y_train, epochs=50, verbose=False)
+def time_mul(x):
+    start = time.time()
+    for loop in range(10):
+        tf.matmul(x,x)
+    result = time.time() - start
+    print("Matrix multiplication (10 loops): {:0.2f}ms".format(1000 * result))
 
+# Force execution on CPU
+print ('On CPU:')
+with tf.device('CPU:0'):
+    x = tf.random.uniform([1000,1000])
+    assert x.device.endswith('CPU:0')
+    time_add(x)
+    time_mul(x)
 
-# Now we retrieve the weights and biases after training.
-w0x_layers = w_layers(model)
-b0x_layers = b_layers(model)
-
-#Let's plot the variation
-def plot_model(w0,b0,w1,b1):
-    plt.figure(figsize=(8,8))
-    for n in range(3):
-        delta_l = w1[n] - w0[n]
-        print('Layer '+str(n)+': bias variation: ', np.linalg.norm(b1[n] - b0[n]))
-        ax = plt.subplot(1,3,n+1)
-        plt.imshow(delta_l)
-        plt.title('Layer '+str(n))
-        plt.axis('off')
-    plt.colorbar()
-    plt.suptitle('Weight Matrices Variation')
-
-plot_model(w0_layers, b0_layers, w0x_layers, b0x_layers)
-
-#Now we are going to freeze the first layer and see what happens.
-model2 = create_model(layerOne=False)
-w1_layers = w_layers(model2)
-b1_layers = b_layers(model2)
-model2.compile(optimizer='adam', loss='mse', metrics=['acc'])
-model2.fit(x_train, y_train, epochs=50, verbose=False)
-w1x_layers = w_layers(model2)
-b1x_layers = b_layers(model2)
-plot_model(w1_layers,b1_layers,w1x_layers,b1x_layers)
-
-#Now we are going to freeze the first and second layers.
-model3 = create_model(layerOne=False, layerTwo=False)
-w2_layers = w_layers(model3)
-b2_layers = b_layers(model3)
-model3.compile(optimizer='adam', loss='mse', metrics=['acc'])
-model3.fit(x_train, y_train, epochs=50, verbose=False)
-w2x_layers = w_layers(model3)
-b2x_layers = b_layers(model3)
-plot_model(w2_layers,b2_layers,w2x_layers,b2x_layers)
+# Force execution on GPU
+print ('On GPU:')
+with tf.device('GPU:0'):
+    x = tf.random.uniform([1000,1000])
+    assert x.device.endswith('GPU:0')
+    time_add(x)
+    time_mul(x)
