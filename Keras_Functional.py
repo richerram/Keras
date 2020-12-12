@@ -1,32 +1,31 @@
-import tensorflow as tf
-from tensorflow.keras.layers import Input, Conv2D
-from tensorflow.keras.models import Model
+# Next thing is a very typical thing in TRANSFER LEARNING
 
-a = Input(shape=(128,128,3), name='input_a')
-b = Input(shape=(64,64,3), name='input_b')
+from tensorflow.keras.layers import Input, Dense, Flatten, Conv2D, MaxPooling2D
+from tensorflow.keras.model import Model
 
-conv = Conv2D(32,(6,6), padding="SAME")
+# we can add the parameter "trainable=False" to make the weights of the layer unchangeable.
+# If we add them to the layer then the weights will stay as initialized.
+inputs = Input(shape=(8,8,1), name='input_layer')
+h = Conv2D(16,3, activation='relu', name='conv2d_layer', trainable=False)(inputs)
+h = MaxPooling2D(3, name='max_pool2d_layer')(h)
+h = Flatten(name='flatten_layer')(h)
+outputs = Dense(10, activation='softmax', name='softmax_layer')(h)
 
-conv_out_a = conv(a)
-print(f'\nConv_Out_a:\n {conv_out_a}')
+model = Model(inputs=inputs, outputs=outputs)
 
-print(f'Conv Input:\n{conv.input}\n')
-print(f'Conv Output:\n{conv.output}\n')
+# Another way to do it is to freeze the weights after the model is trained and
+# we specify which layer is going to be frozen. We need to do it before it is compiled.
+model.get_layer('conv2d_layer').trainable=False
 
-# Creating a new layer node
-conv_out_b = conv(b)
-print(f'Conv Input:\n{conv.input}\n')
-print(f'Conv Output:\n{conv.output}\n')
+# We can also freeze entire MODELS. In this example we take a model and change the last layer,
+# making the last layer the only one that is trainable.
+#model = load_model('previous_model')
+model.trainable=False
+flatten_output = model.get_layer('flatten_layer').output ###### We could've used the input of the outputs layer too.
+new_outputs = Dense(5, activation='softmax', name='new_softmax_layer')(flatten_output)
+new_model = Model(inputs=inputs, outputs=new_outputs)
 
-# print(conv.input_shape) --------- you get an error here since now there are different inputs with different shapes.
-# print(conv.output_shape) ---------- same here. ERROR.
-
-# We have to INDEX using 'get_input_shape_at'
-print(conv.get_input_shape_at(0))
-print(conv.get_input_shape_at(1))
-print(conv.get_output_at(0).name)
-print(conv.get_output_shape_at(0))
-print(conv.get_output_at(1).name)
-print(conv.get_output_shape_at(1))
+new_model.compile(loss='sparse_categorical_crossentropy')
+model.fit(X_train, y_train, epochs=10)
 
 
