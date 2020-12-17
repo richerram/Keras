@@ -1,102 +1,26 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
-from tensorflow.keras.layers import Dense, Input, BatchNormalization
+import tensroflow as tf
+from tensorflow.keras.layers import Dense
 from tensorflow.keras.models import Model
-import tensorflow as tf
+from tensorflow.keras.datasets import cifar10
+####IMPORT GENERATOR
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-# Create titles for the columns since they don't exist and import the data.
-headers = ['Season', 'Age', 'Disease', 'Trauma', 'Surgery', 'Fever', 'Alcohol', 'Smoking', 'Sitting', 'Output']
-fertility = pd.read_csv('fertility_diagnosis.txt', delimiter=',', header=None, names=headers)
+(x_train, y_train), (x_test, y_test) = cifar10.load_data()
 
-# Check shape and verify that the dataframe looks good.
-print(fertility.shape)
-print(fertility.head)
+#####Generator OBJECT###
+# 'rescale' means all pixels will be rescaled to be between 0 and 1.
+# 'horizontal_flip' means that it randomly will flip the images so we are already increasing the amount of exmaples we have.
+# 'height_shift_range' means it will randomly move the images 20% up or down and then we will need 'fill_mode'.
+# 'fill_mode' will complete the shifted images with some pixels, in this case we pick the "nearest" pixels like: aaa\abc\ccc
+# 'featurewise_center' means it will make the "mean" of each feature (let's say the R, G and B layers of an image) each one equal to "0".
+image_gen = ImageDataGenerator(rescale=1/255., horizontal_flip=True, height_shift_range=0.2, fill_mode='nearest', featurewise_center=True)
 
-# Change the value of the output to be Numerical, make all data of typ "float32" and shuffle the data.
-fertility['Output'] = fertility['Output'].map(lambda x : 0.0 if x=='N' else 1.0)
-fertility = fertility.astype('float32')
-fertility = fertility.sample(frac=1).reset_index(drop=True)
+# IMPORTANT #
+# Once we have created the generator we have to "fit" it to the training data first and before anything else so it can calculate the features.
+image_gen = image_gen.fit(x_train)
 
-# Now we are going to "one-hot-encode" the column SEASON (4 different columns 'cause 4 different values) and move OUTPUT to the end.
-fertility = pd.get_dummies(fertility, prefix='Season', columns=['Season'])
-fertility.columns = [col for col in fertility.columns if col != 'Output'] + ['Output']
-print (fertility.head())
+# FINALLY - get the generator itself using the flow method.
+train_datagen = image_gen.flow(x_train, y_train, batch_size=16)
 
-# Convert to NUMPY array.
-fertility = fertility.to_numpy()
-
-# Split the data between Training and Test. 70-30
-training = fertility[0:70]
-test = fertility[70:100]
-
-# Do the x_y split:
-x_train = training[:,0:-1]
-y_train = training[:,-1]
-x_test = test[:,0:-1]
-y_test = test[:,-1]
-
-# We create a generator with a batch size of 10.
-def get_generator(features, labels, batch_size=1):
-    for n in range(int(len(features)/batch_size)):
-        yield(features[n*batch_size: (n+1)*batch_size], labels[n*batch_size: (n+1)*batch_size])
-
-train_generator = get_generator(x_train, y_train, 10)
-
-next(train_generator)
-
-########################################################
-# Moving on to creating the model.
-input_shape = (12,)
-output_shape =(1,)
-
-inputs = Input(input_shape)
-h = BatchNormalization(momentum=0.8)(inputs)
-h = Dense(100, activation='relu')(h)
-h = BatchNormalization(momentum=0.8)(h)
-outputs = Dense(1, activation='sigmoid')(h)
-
-model = Model([inputs], outputs)
-model.summary()
-
-opt = tf.keras.optimizers.Adam(learning_rate = 1e-2)
-model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['accuracy'])
-
-# We will create constants to calculate how many times to run the generator depending on the batch size and how many epochs we will run for.
-batch_size = 5
-train_steps = len(training) // batch_size
-epochs = 3
-
-# Now the loop to run as many generator iterations as available (we will exhaust the generator)
-
-for epoch in range(epochs):
-    train_ganerator = get_generator(x_train, y_train, batch_size)
-    test_generator = get_generator(x_test, y_test, len(test))
-    model.fit_generator(train_generator, steps_per_epoch=train_steps, validation_data=test_generator, validation_steps=1)
-
-############ NOTE you run out of generator data. So we will make it infinite just by adding a While loop, we also add a randomizer of the data.
-
-def get_generator_cyclic(features, labels, batch_size=1):
-    while True:
-        for n in range(int(len(features)/batch_size)):
-            yield(features[n*batch_size: (n+1)*batch_size], labels[n*batch_size: (n+1)*batch_size])
-        permuted = np.random.permutation(len(features))
-        features = features[permuted]
-        labels = labels[permuted]
-
-train_generator_cyclic = get_generator_cyclic(x_train, y_train, batch_size=batch_size)
-test_generator_cyclic = get_generator_cyclic(x_test, y_test, batch_size=batch_size)
-model.fit_generator(train_generator_cyclic, steps_per_epoch=train_steps, validation_data=test_generator_cyclic, validation_steps=1, epochs=3)
-
-# VALIDATION
-validation_generator = get_generator(x_test, y_test, batch_size=30)
-predictions = model.predict_generator(validation_generator, steps=1)
-
-# We print the predictions, see how we ROUND the values to get 0 or 1 and then we TRNASPOSE the array to print it in only one line.
-print (predictions)
-print(np.round(predictions))
-print(np.round(predictions.T[0]))
-
-# EVALUATION
-validation_generator = get_generator(x_test, y_test, batch_size=30)
-print(model.evaluate(validation_generator))
+# Ready to train
+model.fit_generator(train_datagen, epochs=20)
