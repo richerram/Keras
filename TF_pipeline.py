@@ -1,65 +1,52 @@
+# Dataset Generators Example
+# This is a good way of feeding data into our model that doesn't fit in our Memory.
+
+# Basic YIELD function
+def text_file_reader(filepath):
+    with open(filepa, 'r') as f:
+        for row in f
+            yield row
+text_data_generator = text_file_reader('path to file.txt')
+
+next(text_data_generator) # Get one line at a time.
+next(text_data_generator)
+
+
+# Generating an infinte series of values.
 import numpy as np
-import matplotlib.pyplot as plt
-from tensorflow.keras.datasets import cifar100
 
-# First we will load the Cifar100 set with the "fine" labeling which means more categories to chose from.
-(x_train, y_train), (x_test, y_test) = cifar100.load_data(label_mode='fine')
-print(x_train.shape)
-print(y_train.shape)
+def get_data(batch_size):
+    while True:
+        y_train = np.random.choice([0,1], (batch_size, 1))
+        x_train = np.random.randn(batch_size, 1) + (2 * y_train - 1)
+        yield x_train, y_train
 
-print(y_train[500])
-plt.imshow(x_train[500])
+datagen = get_data(32)
+x, y = next(datagen)
 
-import json
-with open('cifar100_fine_labels.json', 'r') as fine_labels:
-    cifar100_fine = json.load(fine_labels)
+# Now we create the Tensorflow Model to feed this data.
+# Logistic Regression Model with Gradient Decent optimizer
 
-print(cifar100_fine[:10])
-print(cifar100_fine[41])
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
 
-examples = x_train[(y_train.T == 30)[0]][:3]
-fix, ax = plt.subplots(1,3)
-ax[0].imshow(examples[0])
-ax[1].imshow(examples[1])
-ax[2].imshow(examples[2])
+model = Sequential([Dense(1, activation='sigmoid')])
+model.compile(optimizer='sgd', loss='binary_crossentropy')
 
-# Now we will do the loading of the same Data Set but with less fine labeling, called COARSE.
-(x_train, y_train), (x_test, y_test) = cifar100.load_data(label_mode='coarse')
-with open ('cifar100_coarse_labels.json') as coarse_labels:
-    cifar100_coarse = json.load(coarse_labels)
+# Now we use de method ".fit_generator" where we pass the generator object and
+# since we know how many iterations is an epoch we use the "steps_per_epoch" argument.
 
-examples = x_train[(y_train.T == 10)[0]][:3]
-fix, ax = plt.subplots(1,3)
-ax[0].imshow(examples[0])
-ax[1].imshow(examples[1])
-ax[2].imshow(examples[2])
+model.fit_generator(datagen, steps_per_epoch=1000, epochs=10)
 
+'''As a side (not too recommended) option we can use the "train_on_batch" method,
+this can be used only when there is the need to do some pre-process to the data we are
+taking from the generator
+gi 
+for _ in range (10000):
+    x_train, y_train = next(datagen)
+    model.train_on_batch(x_train, y_train)
+'''
 
-# Next we are doing the import of the IMBD (movies) DataSet.
-# This is a bit different since it is a type of sequential data.
-
-from tensorflow.keras.datasets import imdb
-
-(xT_imdb, yT_imdb), (xt_imdb, yt_imdb) = imdb.load_data()
-print (xT_imdb[0])
-print (yT_imdb[0])
-
-imdb_words = imdb.get_word_index()
-
-text = ""
-for i in xT_imdb[0]:
-    for k,v in imdb_words.items():
-        if i == v:
-            text = text + str(k) + " "
-print (text)
-
-# Now we are going to load the same data but adding some Keyword arguments:
-# "Skip Top" means we are skipping the most recurrent words as we consider them noise.
-# "oov_char" means Out-Of-Vocabulary Character and it is the character that will repalce the skipped words, we pick "43" which is "out"
-(xT_imdb, yT_imdb), (xt_imdb, yt_imdb) = imdb.load_data(skip_top=50, oov_char=43)
-text = ""
-for i in xT_imdb[0]:
-    for k,v in imdb_words.items():
-        if i == v:
-            text = text + str(k ) + " "
-print (text)
+# Also, we could've created enetators for the evaluation and prediction functions and specify how many steps to run.
+model.evaluate_generator(datagen_eval, steps=100)
+model.predict_generator(datagen_test, steps=100)
