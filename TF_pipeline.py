@@ -27,7 +27,7 @@ plt.imshow(image_unbatched)
 print(label)
 
 #Let's reset the generator.
-training_gen = get_gen(x_train, y_train)
+training_gen = get_gen(x_train, y_train, batch_size=512)
 
 #####     DATA AUGMENTATION GENERATOR     #####
 # We are going to create a function to process an image during the process of calling the image.
@@ -43,18 +43,18 @@ def monochrome(x):
 img_gen = ImageDataGenerator(preprocessing_function=monochrome, rotation_range=180, rescale=(1/255.0))
 img_gen.fit(x_train)
 
-# Now we do create the generator using "flow".
-img_gen_iterable = img_gen.flow(x_train, y_train, batch_size=512, shuffle=False)
-
-# We print an image from the transformation and compare it to the original.
-image, label = next(img_gen_iterable)
-image_orig, label_orig = next(training_gen)
-figs, axes = plt.subplots(1,2)
-axes[0].imshow(image[0,:,:,:])
-axes[0].set_title('Transformed')
-axes[1].imshow(image_orig[0,:,:,:])
-axes[1].set_title('Original')
-plt.show()
+# # Now we do create the generator using "flow".
+# img_gen_iterable = img_gen.flow(x_train, y_train, batch_size=512, shuffle=False)
+#
+# # We print an image from the transformation and compare it to the original.
+# image, label = next(img_gen_iterable)
+# image_orig, label_orig = next(training_gen)
+# figs, axes = plt.subplots(1,2)
+# axes[0].imshow(image[0,:,:,:])
+# axes[0].set_title('Transformed')
+# axes[1].imshow(image_orig[0,:,:,:])
+# axes[1].set_title('Original')
+# plt.show()
 
 # We create the model.
 model = Sequential()
@@ -74,7 +74,7 @@ model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['ac
 model.summary()
 
 # Train the model calculating steps per ecpoch for training and testing.
-train_steps_per_epoch = img_gen_iterable.n // img_gen_iterable.batch_size
-print (train_steps_per_epoch)
+# train_steps_per_epoch = training_gen.n // training_gen.batch_size
+# print (train_steps_per_epoch)
 
-model.fit_generator(img_gen_iterable, steps_per_epoch=train_steps_per_epoch, epochs=5)
+model.fit_generator(training_gen, steps_per_epoch=512, epochs=5)
