@@ -1,45 +1,87 @@
 import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Input, Conv2D
+import os
 
-# We are going to create different slices of tensors from an array.
-dataset = tf.data.Dataset.from_tensor_slices([1,2,3,4,5,6])
-print (dataset)
-for element in dataset:
-    print (element)
+x = np.zeros((100,10,2,2))
 
-dataset = tf.data.Dataset.from_tensor_slices([[1,2],[3,4],[5,6]])
-print (dataset)
-for element in dataset:
-    print (element)
+dataset1=tf.data.Dataset.from_tensor_slices(x)
+print(dataset1)
+print(dataset1.element_spec)
 
-# We could also call the numpy array from those tensors.
-for element in dataset:
-    print (element.numpy())
+# If we try to create a dataset with elements of different sizes it creates an error.
+x2 = [np.zeros((10,2,2)), np.zeros((5,2,2))]
+# dataset2=tf.data.Dataset.from_tensor_slices(x2) # This creates an error.
 
-# We are going to create 128 tensors of length 5.
-dataset = tf.data.Dataset.from_tensor_slices(tf.random.uniform([128,5]))
-print (dataset.element_spec)
+x2 = [np.zeros((10,1)), np.zeros((10,1)), np.zeros((10,1))]
+dataset2 = tf.data.Dataset.from_tensor_slices(x2)
 
-# More involved example passing a Tuple of tensors to create the dataset.
-dataset = tf.data.Dataset.from_tensor_slices(
-    (tf.random.uniform([128, 4], minval=1, maxval=10, dtype=tf.int32),
-    tf.random.normal([128])))
-print (dataset.element_spec)
+# Using "zipping" to combine datasets. Sizes (shapes) of the datasets don't need to be the same but the final
+# dataset will truncate to the smaller dataset' shape.
+zipped_dataset = tf.data.Dataset.zip((dataset1, dataset2))
+print(zipped_dataset.element_spec)
 
-for elem in dataset.take(2):
-    print (elem)
+# We create a "get_batches" function to see how many batches were created.
+def get_batches(dataset):
+    iter_dataset = iter(dataset)
+    i = 0
+    try:
+        while next(iter_dataset):
+            i = i+1
+    except:
+        return i
 
-##### Now with an actual dataset ####
-from tensorflow.keras.datasets import cifar10
+get_batches(zipped_dataset)
 
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
-dataset = tf.data.Dataset.from_tensor_slices(((x_train, y_train)))
-print(dataset.element_spec)
+######## Datasets from Numpy Arrays #########
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+print(type(x_train), type(y_train))
 
-###### NICE ONE HERE ######
-# Using the DataSet class to wrap other generators like ImageDataGenerator
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
+mnist_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+print(mnist_dataset)
 
-img_datagen = ImageDataGenerator(width_shift_range=0.2, horizontal_flip=True)
-dataset = tf.data.Dataset.from_generator(img_datagen.flow, args=[x_train, y_train],
-                                         output_types=(tf.float32, tf.int32),
-                                         output_shapes=([32,32,32,3], [32,1]))
+# Inspecting the insides
+element = next(iter(mnist_dataset.take(1)))
+print (len(element))
+print(element[0].shape)
+print(element[1].shape)
+
+# Another example with text files.
+text_files = sorted([f.path for f in os.scandir('shakespeare')])
+print(text_files)
+
+with open(text_files[0], 'r') as fil:
+    contents = [fil.readline() for i in range(5)]
+    for line in contents:
+        print(line)
+
+shak_dataset = tf.data.TextLineDataset(text_files)
+
+#To find the insides.
+first5lines = iter(shak_dataset.take(5))
+lines = [line for line in first5lines]
+for line in lines:
+    print (line)
+
+# We can see that all the files are in our dataset:
+shak_dataset_iterator = iter(shak_dataset)
+lines = [line for line in shak_dataset_iterator]
+print (len(lines))
+
+# If we'd like to print the first lines of each file we would have to jump from one file to another before running through all the lines.
+# For that we would use the INTERLEAVE function.
+
+text_file_dataset = tf.data.Dataset.from_tensor_slices(text_files)
+files = [file for file in text_file_dataset]
+for file in files:
+    print (file)
+
+interleaved_shak = text_file_dataset.interleave(tf.data.TextLineDataset, cycle_length=9)
+print (interleaved_shak)
+
+lines = [line for line in iter(interleaved_shak.take(10))]
+for line in lines:
+    print(line)
