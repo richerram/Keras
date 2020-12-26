@@ -1,56 +1,61 @@
-##### Padding and Masking the IMDB dataset #####
-
+##### Tokenising Text Data ######
 import tensorflow as tf
-from tensorflow.keras.datasets import imdb
-import numpy as np
+from tensorflow.keras.preprocessing.text import Tokenizer
+import json
 
-(x_train, y_train), (x_test, y_test) = imdb.load_data()
-print(type(x_train))
-# <class 'numpy.ndarray'>
-print(x_train.shape, y_train.shape, x_test.shape, y_test.shape)
-# (25000,) (25000,) (25000,) (25000,)
+with open ('ThreeMenInABoat.txt', 'r', encoding='utf-8') as file:
+    text_string = file.read().replace('\n', ' ')
 
-# Let's display the first element of the dataset.
-print(x_train[0])
-''' [1, 14, 22, 16, 43, 530, 973, 1622, 1385, 65, 458, 
-    4468, 66, 3941, 4, 173, 36, 256, 5, 25, 100, 43, 
-    838, 112, 50, 670, 22665, 9, 35, 480, 284, 5, 150,...'''
-print(y_train[0])
-# 1 ---> this means it is a positive review
+text_string = text_string.replace('-', '')
+print(text_string[:2001])
 
-# Import the actual words represented by those indexes.
-jsonwords = imdb.get_word_index()
-# If we want to map the words to the indices we need to consider that the "index_from" starts from 3 in the dataset,
-# why this is not mentioned anywhere in the documentation? I don't know!!!
-index_from = 3
-jsonwords = {k:v + index_from for k,v in jsonwords.items()}
+sentence_strings = text_string.split('.')
+print(sentence_strings[20:30])
 
-# Let's print the sentence.
-print(*[k for i in x_train[0] for k,v in jsonwords.items() if v==i])
-'''
-this film was just brilliant casting location scenery story direction everyone's really suited the part they played and 
-you could just imagine being there robert redford's is an amazing actor and now the same being director norman's father
-came from the same scottish island as myself so i loved the fact there was a real connection with this film the witty 
-remarks throughout the film were great it was just brilliant so much that i bought the film as soon as it was released 
-for retail and would recommend it to everyone to watch and the fly fishing was amazing really cried at the end it was 
-so sad and you know what they say if you cry at a film it must have been good and this definitely was also congratulations 
-to the two little boy's that played the part's of norman and paul they were just brilliant children are often left out 
-of the praising list i think because the stars that play them all grown up are such a big profile for the whole film but 
-these children are amazing and should be praised for what they have done don't you think the whole story was so lovely 
-because it was true and was someone's life after all that was shared with us all
-'''
+additional_filters = '—’‘“”'
+tokenizer = Tokenizer(num_words=None,
+                      filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n' + additional_filters,
+                      lower=True,
+                      split=' ',
+                      char_level=False,
+                      oov_token='<UNK>',
+                      document_count=0)
 
-print('GPU name: {}', format(tf.test.gpu_device_name()))
+# Fit to a "list of strings" or a "list of lists of strings" #
+tokenizer.fit_on_texts(sentence_strings)
 
-# Not all sequences are the same length so we are going to PAD them.
-pad_x_train =  tf.keras.preprocessing.sequence.pad_sequences(x_train, maxlen=300, padding='post', truncating='pre')
-print(pad_x_train.shape)
+# View configuration #
+tokenizer_config = tokenizer.get_config()
+tokenizer_config.keys()
+tokenizer_config['word_counts']
+tokenizer_config['word_index']
 
-# We will MASK these, fot that we will create (batch, sequence and features... so we need to add an extra array layer.
-# We also need to convert it to TENSOR before masking it.
-pad_x_train = np.expand_dims(pad_x_train, -1)
-tf_x_train = tf.convert_to_tensor(pad_x_train, dtype='float32')
-masking_layer = tf.keras.layers.Masking(mask_value=0.0)
-mask_x_train = masking_layer(tf_x_train)
-print(mask_x_train._keras_mask)
+word_counts = json.loads(tokenizer_config['word_counts'])
+index_word = json.loads(tokenizer_config['index_word'])
+word_index = json.loads(tokenizer_config['word_index'])
 
+# Map sentences to tokens #
+print(sentence_strings[:5])
+sentence_seq = tokenizer.texts_to_sequences(sentence_strings)
+print(type(sentence_seq))
+print(sentence_seq[:5])
+
+# Just verifying the mappings are the same as with the JSON dictionaries we imported earlier #
+print(word_index['chapter'], word_index['i'])
+print(word_index['three'], word_index['invalids'])
+print(word_index['sufferings'], word_index['of'], word_index['george'], word_index['and'], word_index['harris'])
+print(word_index['a'], word_index['victim'], word_index['to'], word_index['one'], word_index['hundred'], word_index['and'], word_index['seven'], word_index['fatal'], word_index['maladies'])
+print(word_index['useful'], word_index['prescriptions'])
+
+# Now we'll do the inverse, mapping indexes to the words #
+sentence_seq[0:5]
+tokenizer.sequences_to_texts(sentence_seq)[:5]
+print(index_word['362'], index_word['8'])
+print(index_word['126'], index_word['3362'])
+print(index_word['2319'], index_word['6'], index_word['36'], index_word['3'], index_word['35'])
+print(index_word['5'], index_word['1779'], index_word['4'], index_word['43'], index_word['363'], index_word['3'], index_word['468'], index_word['3363'], index_word['2320'])
+print(index_word['2321'], index_word['3364'])
+
+tokenizer.sequences_to_texts([[92, 104, 241], [152, 169, 53, 2491]])
+tokenizer.texts_to_sequences(['i would like goobleydoobly hobbledyho'])
+index_word['1']
