@@ -1,19 +1,27 @@
-# Embedding Layer example #
+# Embedding layer (tf.constant) #
 import tensorflow as tf
 from tensorflow.keras.layers import Embedding
-import numpy as np
 
+print ('GPU names {}'.format(tf.test.gpu_device_name()))
 
-# The Embedding layer takes two inputs, the vocabulary size and the dimensional space, so in the following example,
-# each word in a vocabulary of 1,000 words will be embedded into a space of 32 dimensions.
-# We can also add a Masking layer which will do padding into our sequence
+embedding_layer = Embedding(input_dim=501, output_dim=16)
 
-emb_layer = Embedding(1000, 32, input_length=64, mask_zero=True)
+# remember Embedding layer will expect an input with the shape (batch, sequence, features)
+sequence_indices = tf.constant([[[0], [1], [5], [500]]])
+sequence_embeddings = embedding_layer(sequence_indices)
+print(sequence_embeddings) # see how there are the same number of features but embedded into a 16 dim vectors
 
-# Toy example with random input.
-test_input = np.random.randint(1000, size=(16,64)) # Batch of 16 with each being of length 64.
+# You can retrieve the embedding weights vectors using "get_weights()"
+print(embedding_layer.get_weights()[0])
 
-emb_inputs = emb_layer(test_input) # This will create an embedded into 32 dimensions Tensor of shape (16, 64, 32)
-print(emb_inputs._keras_mask)
+# and you can access the vector for each index too.
+print(embedding_layer.get_weights()[0][14])
+
+# We can mask the input too.
+masking_embedding_layer = Embedding(input_dim=501, output_dim=16, mask_zero=True)
+masked_sequence = masking_embedding_layer(sequence_indices)
+print(masked_sequence._keras_mask) # Notice how the "0" has been marked as False.
+
+# NOTE: Embedding layer can only go at the beggining of a model.
 
 
