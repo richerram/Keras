@@ -1,96 +1,77 @@
-# Embedding Projector (using IMDB dataset) #
+# Recurrent Neural Nets (RNN) #
 import tensorflow as tf
-from tensorflow.keras.datasets import imdb
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.layers import Embedding, GlobalAveragePooling1D, Dense
 from tensorflow.keras.models import Sequential
-import matplotlib.pyplot as plt
+from tensorflow.keras.layers import Embedding, SimpleRNN, Dense, LSTM, GRU
+
+''' # Example of a RNN model
+model = Sequential([
+    Embedding(1000, 32, input_length=64),   # (None, 64, 32)
+    SimpleRNN(64, activation='tanh'),       # (None, 64) .... we could also use LSTM or GRU layers here.
+    Dense(5, activation='softmax')])        # (None, 5)'''
+
+# SimpleRNN layer and test
+simplernn_layer = SimpleRNN(units=16)
+
+# it only returns the final output.
+sequence = tf.constant([[[1.,1.], [2.,2.],[56.,-100.]]])
+layer_output = simplernn_layer(sequence)
+print (layer_output)
 
 
-# Function to load and pre-porcess the dataset.
-def get_and_pad_imdb_dataset(num_words=1000, maxlen=None, index_from=2):
-    (x_train, y_train), (x_test, y_test) = imdb.load_data(num_words=num_words, skip_top=0,
-                                                          maxlen=maxlen, start_char=1,
-                                                          oov_char=2, index_from=index_from)
-    x_train = pad_sequences(x_train, maxlen=maxlen, padding='pre', truncating='pre', value=0)
+# A function to load and preprocess the IMDB dataset
 
-    x_test = pad_sequences(x_test, maxlen=maxlen, padding='pre', truncating='pre', value=0)
+def get_and_pad_imdb_dataset(num_words=10000, maxlen=None, index_from=2):
+    from tensorflow.keras.datasets import imdb
 
+    # Load the reviews
+    (x_train, y_train), (x_test, y_test) = imdb.load_data(path='imdb.npz',
+                                                          num_words=num_words,
+                                                          skip_top=0,
+                                                          maxlen=maxlen,
+                                                          start_char=1,
+                                                          oov_char=2,
+                                                          index_from=index_from)
+
+    x_train = tf.keras.preprocessing.sequence.pad_sequences(x_train,
+                                                            maxlen=None,
+                                                            padding='pre',
+                                                            truncating='pre',
+                                                            value=0)
+
+    x_test = tf.keras.preprocessing.sequence.pad_sequences(x_test,
+                                                           maxlen=None,
+                                                           padding='pre',
+                                                           truncating='pre',
+                                                           value=0)
     return (x_train, y_train), (x_test, y_test)
 
-# Function to the dataset word index.
-def get_imdb_word_index(num_words=1000, index_from=2):
-    imdb_word_index = imdb.get_word_index()
-    imdb_word_index = {k:v + index_from for k,v in imdb_word_index.items() if v + index_from < num_words}
+# A function to get the dataset word index
+
+def get_imdb_word_index(num_words=10000, index_from=2):
+    imdb_word_index = tf.keras.datasets.imdb.get_word_index(
+                                        path='imdb_word_index.json')
+    imdb_word_index = {key: value + index_from for
+                       key, value in imdb_word_index.items() if value <= num_words-index_from}
     return imdb_word_index
 
-# Loading
-(x_train, y_train), (x_test, y_test) = get_and_pad_imdb_dataset()
+(x_train, y_train), (x_test, y_test) = get_and_pad_imdb_dataset(maxlen=250)
 imdb_word_index = get_imdb_word_index()
 
-# Swap key:value in dictionary and print to check out.
-inv_imdb_word_index = {v:k for k,v in imdb_word_index.items()}
-print(*[inv_imdb_word_index[i] for i in x_train[100] if i>2])
-
-##### Let's EMBED #####
-# First we need to know the maximun value we can index to.
+# To make the Embedding layer we need to get the maximum index value.
 max_index_value = max(imdb_word_index.values())
-print(max_index_value)
-
 embedding_dim = 16
 
-# Building the model.
 model = Sequential([
-    Embedding(input_dim=max_index_value+1, output_dim=embedding_dim, mask_zero=False),
-    GlobalAveragePooling1D(),
-    Dense(1, activation="sigmoid")
-])
+    Embedding(input_dim=max_index_value+1, output_dim=embedding_dim, mask_zero=True),
+    LSTM(units=16),
+    Dense(1, activation='sigmoid')])
 
-model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.compile(loss='binary_crossentropy', metrics=['accuracy'], optimizer='adam')
 
-history = model.fit(x_train, y_train, batch_size=32, epochs=5, validation_data=(x_test, y_test), validation_steps=20)
+history = model.fit(x_train, y_train, epochs=3, batch_size=32, validation_data=(x_test, y_test), )
 
-# Plotting the results
-plt.style.use('ggplot')
+inv_imdb_index = {v:k for k,v in imdb_word_index.items()}
+print(*[inv_imdb_index[index] for index in x_test[0] if index>2])
 
-history_dict = history.history
-acc = history_dict['accuracy']
-val_acc = history_dict['val_accuracy']
-loss = history_dict['loss']
-val_loss = history_dict['val_loss']
-
-epochs = range(1, len(acc) + 1)
-
-plt.figure(figsize=(14,5))
-plt.plot(epochs, acc, marker='.', label='Training acc')
-plt.plot(epochs, val_acc, marker='.', label='Validation acc')
-plt.title('Training and validation accuracy')
-plt.xlabel('Epoch')
-plt.ylabel('Classification Accuracy')
-plt.legend(loc='lower right')
-plt.ylim(0, 1);
-
-
-###### Now we export data to be used in the EMBEDDING PROJECTOR #####
-
-    weights = model.layers[0].get_weights()[0] # extracting the weights
-
-    import io
-    from os import path
-
-    out_v = io.open('vecs.tsv', 'w', encoding='utf-8')
-    out_m = io.open('meta.tsv', 'w', encoding='utf-8')
-
-    k = 0
-
-    for word, token in imdb_word_index.items():
-        if k != 0:
-            out_m.write('\n')
-            out_v.write('\n')
-
-        out_v.write('\t'.join([str(x) for x in weights[token]]))
-        out_m.write(word)
-        k += 1
-
-    out_m.close()
-    out_v.close()
+# Let's make a prediction
+model.predict(x_test[None, 0, :]) # we see that it gives a 99.2% probability that this is a positive review.
