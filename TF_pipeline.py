@@ -1,72 +1,79 @@
-##### Stacked RNNs and Bidirectional wrapper ####
+##### Stateful RNNs (to retain long sequencese) #####
 import tensorflow as tf
-from tensorflow.keras.datasets import imdb
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import GRU, Input
 
+# Here is the same RNN, the second one retains the state this is done with the "stateful=True" statement.
+gru = Sequential([GRU(5, input_shape=(None,1), name='rnn')])
+stateful_gru = Sequential([GRU(5, stateful=True, batch_input_shape=(2, None, 1), name='stateful_rnn')])
 
-# A function to load and preprocess the IMDB dataset
+'''When using stateful RNNs, it is necessary to supply this argument to the first layer of a Sequential model. 
+This is because the model will always assume that each element of every subsequent batch it receives will be 
+a continuation of the sequence from the corresponding element in the previous batch.
 
-def get_and_pad_imdb_dataset(num_words=10000, maxlen=None, index_from=2):
+Another detail is that when defining a model with a stateful RNN using the functional API, you will need to specify 
+the batch_shape argument as follows:'''
 
-    # Load the reviews
-    (x_train, y_train), (x_test, y_test) = imdb.load_data(path='imdb.npz',
-                                                          num_words=num_words,
-                                                          skip_top=0,
-                                                          maxlen=maxlen,
-                                                          start_char=1,
-                                                          oov_char=2,
-                                                          index_from=index_from)
+inputs = Input(batch_shape=(2, None, 1))
+outputs = GRU(5, stateful=True, name='stateful_rnn')(inputs)
 
-    x_train = tf.keras.preprocessing.sequence.pad_sequences(x_train,
-                                                            maxlen=None,
-                                                            padding='pre',
-                                                            truncating='pre',
-                                                            value=0)
+stateful_gru = Model(inputs, outputs)
 
-    x_test = tf.keras.preprocessing.sequence.pad_sequences(x_test,
-                                                           maxlen=None,
-                                                           padding='pre',
-                                                           truncating='pre',
-                                                           value=0)
-    return (x_train, y_train), (x_test, y_test)
+# We can Inspect the layers and retrieve the "states" property.
+print(gru.get_layer('rnn').states)
+print(stateful_gru.get_layer('stateful_rnn').states)
 
-# A function to get the dataset word index
+# Now let's use this on a simple data sequence.
+sequence_data = tf.constant([
+    [[-4.], [-3.], [-2.], [-1.], [0.], [1.], [2.], [3.], [4.]],
+    [[-40.], [-30.], [-20.], [-10.], [0.], [10.], [20.], [30.], [40.]]
+], dtype=tf.float32)
 
-def get_imdb_word_index(num_words=10000, index_from=2):
-    imdb_word_index = tf.keras.datasets.imdb.get_word_index(
-                                        path='imdb_word_index.json')
-    imdb_word_index = {key: value + index_from for
-                       key, value in imdb_word_index.items() if value <= num_words-index_from}
-    return imdb_word_index
+print (sequence_data.shape)
 
-(x_train, y_train), (x_test, y_test) = get_and_pad_imdb_dataset(maxlen=250, num_words=5000)
-imdb_word_index = get_imdb_word_index(num_words=5000)
+# Let's pass this sequence through both models.
+_1 = gru(sequence_data)
+_2 = stateful_gru(sequence_data)
 
-max_index_value = max(imdb_word_index.values())
-embedding_dim = 16
+print(gru.get_layer('rnn').states)
+# [None]
 
-''' Example using Embedding and LSTM layers.'''
-model = tf.keras.Sequential([
-            tf.keras.layers.Embedding(input_dim=max_index_value+1, output_dim=embedding_dim, mask_zero=True),
-            tf.keras.layers.LSTM(units=32, return_sequences=True),
-            tf.keras.layers.LSTM(units=32, return_sequences=False),
-            tf.keras.layers.Dense(1, activation='sigmoid')])
+print(stateful_gru.get_layer('stateful_rnn').states)
+'''[<tf.Variable 'stateful_rnn_1/Variable:0' shape=(2, 5) dtype=float32, 
+    numpy=array([[ 0.5654753 ,  0.93823063, -0.8363503 ,  0.44468057, -0.63199437],
+                [-0.38263583,  1.        , -1.        ,  0.9123156 ,  0.30444482]],
+                dtype=float32)>]'''
 
-'''Example using a Bidirectional layers with different forward and backward layers.'''
-model = tf.keras.Sequential([
-            tf.keras.layers.Embedding(input_dim=max_index_value+1, output_dim=embedding_dim, mask_zero=True),
-            tf.keras.layers.Bidirectional(layer=tf.keras.layers.LSTM(units=8), merge_mode='sum',
-                                        backward_layer=tf.keras.layers.GRU(units=8, go_backwards=True)),
-            tf.keras.layers.Dense(1, activation='sigmoid')])
+# You can reset the states using "reset_states()".
+stateful_gru.get_layer('stateful_rnn').reset_states()
+print(stateful_gru.get_layer('stateful_rnn').states)
+'''[<tf.Variable 'stateful_rnn_1/Variable:0' shape=(2, 5) dtype=float32, numpy=
+    array([[0., 0., 0., 0., 0.],
+         [0., 0., 0., 0., 0.]], dtype=float32)>]'''
 
-##### Example using stacked LSTM and Bidirectional layers. #####
-model = tf.keras.Sequential([
-            tf.keras.layers.Embedding(input_dim=max_index_value+1, output_dim=embedding_dim),
-            tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(units=8, return_sequences=True), merge_mode='concat'),
-            tf.keras.layers.GRU(units=8, return_sequences=False),
-            tf.keras.layers.Dense(1, activation='sigmoid')])
+# Note that passing many subsequences through a stateful RNN gives the same result as passing tue whole sequence at once.
+# First we porcess the entire sequence at once.
+stateful_gru.get_layer('stateful_rnn').reset_states()
+_ = stateful_gru(sequence_data)
+print (stateful_gru.get_layer('stateful_rnn').states)
+'''[<tf.Variable 'stateful_rnn_1/Variable:0' shape=(2, 5) dtype=float32, numpy=array(
+            [[ 0.13407314, -0.24488138,  0.33283684, -0.33388492,  0.11438916],
+            [ 0.0450515 ,  0.44803664,  0.8882864 , -0.9989012 , -0.48145008]],dtype=float32)>]'''
 
-model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-history = model.fit(x_train, y_train, epochs=3, batch_size=32)
+# Now we split the sequence into 3 batches and pass 1 by 1.
+batch1 = sequence_data[:, :3, :]
+batch2 = sequence_data[:, 3:6, :]
+batch3 = sequence_data[:, 6:, :]
 
-# Predicting #
-model.predict(x_test[None, 45, :])
+print(f'First Batch: {batch1}')
+print(f'Second Batch: {batch2}')
+print(f'Third Batch: {batch3}')
+
+stateful_gru.get_layer('stateful_rnn').reset_states()
+_ = stateful_gru(batch1)
+_ = stateful_gru(batch2)
+_ = stateful_gru(batch3)
+stateful_gru.get_layer('stateful_rnn').states
+'''[<tf.Variable 'stateful_rnn_1/Variable:0' shape=(2, 5) dtype=float32, numpy= array(
+        [[ 0.13407314, -0.24488138,  0.33283684, -0.33388492,  0.11438916],
+        [ 0.0450515 ,  0.44803664,  0.8882864 , -0.9989012 , -0.48145008]], dtype=float32)>]'''
