@@ -1,43 +1,94 @@
-##### Custom Layers example #####
+##### Custom Layers #####
 import tensorflow as tf
-from tensorflow.keras.layers import Layer, Dense
+from tensorflow.keras.layers import Layer, Softmax
 from tensorflow.keras.models import Model
 
-class LinearMap(Layer):
-    def __init__(self, input_dim, units):
-        super(LinearMap, self).__init__()
-        w_init = tf.random_normal_initializer()
-        self.w = tf.Variable(initial_value=w_init(shape=(input_dim, units)))
-
-        # An analog way for self.w could be this:
-        # self.w = self.add_weight(shape=(input_dim, units), initializer='random_normal') #
+class MyLayer(Layer):
+    def __init__(self, units, input_dim):
+        super(MyLayer, self).__init__()
+        self.w = self.add_weight(shape=(input_dim, units), initializer='random_normal')
+        self.b = self.add_weight(shape=(units,), initializer='zeros')
 
     def call(self, inputs):
-        return tf.matmul(inputs, self.w)
+        return tf.matmul(inputs, self.w)+self.b
 
-linear_layer = LinearMap(3,2)
-
-input = tf.ones((1,3))
-print(linear_layer(input))
-# tf.Tensor([[-0.09535347 -0.16383061]], shape=(1, 2), dtype=float32)
-
-print(linear_layer.weights)
-'''[<tf.Variable 'Variable:0' shape=(3, 2) dtype=float32, numpy=
-array([[-0.06317208, -0.0368916 ],
-       [-0.06696137, -0.05961837],
-       [ 0.03477998, -0.06732064]], dtype=float32)>]'''
+dense_layer = MyLayer(3,5)
+x = tf.ones((1,5))
+print(dense_layer(x))
+print(dense_layer.weights)
 
 
-### Now we create a Model using our custom Layer
+# We can also specify if we want to make the Weights and Bias trainable or not.
+class MyLayer(Layer):
+    def __init__(self, units, input_dim):
+        super(MyLayer, self).__init__()
+        self.w = self.add_weight(shape=(input_dim, units), initializer='random_normal', trainable=False)
+        self.b = self.add_weight(shape=(units,), initializer='zeros', trainable=False)
+
+    def call(self, inputs):
+        return tf.matmul(inputs, self.w)+self.b
+
+dense_layer = MyLayer(3,5)
+print('Trainable Weights: ', len(dense_layer.trainable_weights))
+print('Non-Trainable Weights: ', len(dense_layer.non_trainable_weights))
+
+
+### We can even add more functionalities adding variables to customize variables.
+class MyLayerMean(Layer):
+    def __init__(self, units, input_dim):
+        super(MyLayerMean, self).__init__()
+        self.w = self.add_weight(shape=(input_dim, units), initializer='random_normal')
+        self.b = self.add_weight(shape=(units,), initializer='zeros')
+        self.sum_activation = tf.Variable(initial_value=tf.zeros((units,)), trainable=False)
+        self.number_call = tf.Variable(initial_value=0, trainable=False)
+
+    def call(self, inputs):
+        activations = tf.matmul(inputs, self.w)+self.b
+        self.sum_activation.assign_add(tf.reduce_sum(activations, axis=0))
+        self.number_call.assign_add(inputs.shape[0])
+        return activations, self.sum_activation / tf.cast(self.number_call, tf.float32)
+
+dense_layer = MyLayerMean(3,5)
+
+# See how the values don't change (this is useful to follow the propagation of signals).
+y, activation_means = dense_layer(tf.ones((1,5)))
+print(activation_means.numpy())
+# [ 0.01249229  0.22859478 -0.03365123]
+
+print(activation_means.numpy())
+# [ 0.01249229  0.22859478 -0.03365123]
+
+
+### Now we will create a Dropout layer and add it to a custom Model.
+class MyDropout(Layer):
+    def __init__(self, rate):
+        super(MyDropout, self).__init__()
+        self.rate = rate
+
+    def call(self, inputs):
+        return tf.nn.dropout(inputs, rate=self.rate) # here we are using the default Dropout layer defined in TF.
 
 class MyModel(Model):
-    def __init__(self, hidden_units, outputs, **kwargs):
-        super(MyModel, self).__init__(**kwargs)
-        self.dense = Dense(hidden_units, activation='sigmoid')
-        self.linear = LinearMap(hidden_units, outputs)
+    def __init__(self, units_1, input_dim_1, units_2, units_3):
+        super(MyModel, self).__init__()
+        self.layer_1 = MyLayer(units_1, input_dim_1)
+        self.dropout_1 = MyDropout(0.5)
+        self.layer_2 = MyLayer(units_2, units_1)
+        self.dropout_2 = MyDropout(0.5)
+        self.layer_3 = MyLayer(units_3, units_2)
+        self.softmax = Softmax()
 
     def call(self, inputs):
-        h = self.dense(inputs)
-        return self.linear(h)
+        x = self.layer_1(inputs)
+        x = tf.nn.relu(x)
+        x = self.dropout_1(x)
+        x = self.layer_2(x)
+        x = tf.nn.relu(x)
+        x = self.dropout_2(x)
+        x = self.layer_3(x)
 
-my_model = MyModel(64, 12, name='my_custom_model')
+        return self.softmax(x)
+
+my_model = MyModel(64, 10000, 64, 46)
+print(my_model(tf.ones((1, 10000))))
+my_model.summary()
