@@ -1,44 +1,41 @@
-#### Model Subclassing example #####
+##### Model Subclassing #####
 import tensorflow as tf
-from tensorflow.keras.layers import Dense
 from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Dropout, Softmax, concatenate, Layer
 
-# Note the subclassing class uses the Model class.
-# Basic example
 class MyModel(Model):
-    def __init__(self, **kwargs):
-        super(MyModel, self).__init__(**kwargs)
-        self.dense = Dense(16)
+    def __init__(self):
+        super(MyModel, self).__init__()
+        self.dense_1 = Dense(64, activation='relu')
+        self.dense_2 = Dense(10)
+        self.dropout = Dropout(0.4)
+
+    def call(self, inputs, training=True):
+        x = self.dense_1(inputs)
+        if training:
+            x = self.dropout(x)
+        return self.dense_2(x)
+
+model = MyModel()
+model(tf.random.uniform([1,10]))
+model.summary()
+
+# For a NON-LINEAR topology we can do the following model with 2 branches:
+class MyModel(Model):
+    def __init__(self):
+        super(MyModel, self).__init__()
+        self.dense_1 = Dense(64, activation='relu')
+        self.dense_2 = Dense(10)
+        self.dense_3 = Dense(5)
+        self.softmax = Softmax()
 
     def call(self, inputs):
-        return self.dense(inputs)
-my_model = MyModel(name='my_model')
+        x = self.dense_1(inputs)
+        y1 = self.dense_2(inputs)
+        y2 = self.dense_3(y1)
+        concat = concatenate([x, y2])
+        return self.softmax(concat)
 
-
-# Basic example #2
-class MyModel(Model):
-    def __init__(self, num_classes, **kwargs):
-        super(MyModel, self).__init__(**kwargs)
-        self.dense1 = Dense(16, activation='sigmoid')
-        self.dense2 = Dense(num_classes, activation='softmax')
-
-    def call(self, inputs):
-        h = self.dense1(inputs)
-        return self.dense2(h)
-my_model = MyModel(10, name='my_model')
-
-# Basic example #3
-# Notice here we use the "training=False" argument, very useful with Dropout and BatchNorm layers.
-# This tells the model to use those layers when testing.
-class MyModel(Model):
-    def __init__(self, num_classes, **kwargs):
-        super(MyModel, self).__init__(**kwargs)
-        self.dense1 = Dense(16, activation='sigmoid')
-        self.dropout = Dropout(0.5)
-        self.dense2 = Dense(num_classes, activation='softmax')
-
-    def call(self, inputs, training=False):
-        h = self.dense1(inputs)
-        h = self.dropout(h, training=training)
-        return self.dense2(h)
-my_model = MyModel(12, name='my_model')
+model = MyModel()
+model(tf.random.uniform([1,10]))
+model.summary()
