@@ -1,41 +1,43 @@
-##### Model Subclassing #####
+##### Custom Layers example #####
 import tensorflow as tf
+from tensorflow.keras.layers import Layer, Dense
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Dropout, Softmax, concatenate, Layer
 
-class MyModel(Model):
-    def __init__(self):
-        super(MyModel, self).__init__()
-        self.dense_1 = Dense(64, activation='relu')
-        self.dense_2 = Dense(10)
-        self.dropout = Dropout(0.4)
+class LinearMap(Layer):
+    def __init__(self, input_dim, units):
+        super(LinearMap, self).__init__()
+        w_init = tf.random_normal_initializer()
+        self.w = tf.Variable(initial_value=w_init(shape=(input_dim, units)))
 
-    def call(self, inputs, training=True):
-        x = self.dense_1(inputs)
-        if training:
-            x = self.dropout(x)
-        return self.dense_2(x)
-
-model = MyModel()
-model(tf.random.uniform([1,10]))
-model.summary()
-
-# For a NON-LINEAR topology we can do the following model with 2 branches:
-class MyModel(Model):
-    def __init__(self):
-        super(MyModel, self).__init__()
-        self.dense_1 = Dense(64, activation='relu')
-        self.dense_2 = Dense(10)
-        self.dense_3 = Dense(5)
-        self.softmax = Softmax()
+        # An analog way for self.w could be this:
+        # self.w = self.add_weight(shape=(input_dim, units), initializer='random_normal') #
 
     def call(self, inputs):
-        x = self.dense_1(inputs)
-        y1 = self.dense_2(inputs)
-        y2 = self.dense_3(y1)
-        concat = concatenate([x, y2])
-        return self.softmax(concat)
+        return tf.matmul(inputs, self.w)
 
-model = MyModel()
-model(tf.random.uniform([1,10]))
-model.summary()
+linear_layer = LinearMap(3,2)
+
+input = tf.ones((1,3))
+print(linear_layer(input))
+# tf.Tensor([[-0.09535347 -0.16383061]], shape=(1, 2), dtype=float32)
+
+print(linear_layer.weights)
+'''[<tf.Variable 'Variable:0' shape=(3, 2) dtype=float32, numpy=
+array([[-0.06317208, -0.0368916 ],
+       [-0.06696137, -0.05961837],
+       [ 0.03477998, -0.06732064]], dtype=float32)>]'''
+
+
+### Now we create a Model using our custom Layer
+
+class MyModel(Model):
+    def __init__(self, hidden_units, outputs, **kwargs):
+        super(MyModel, self).__init__(**kwargs)
+        self.dense = Dense(hidden_units, activation='sigmoid')
+        self.linear = LinearMap(hidden_units, outputs)
+
+    def call(self, inputs):
+        h = self.dense(inputs)
+        return self.linear(h)
+
+my_model = MyModel(64, 12, name='my_custom_model')
