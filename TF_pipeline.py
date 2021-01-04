@@ -1,186 +1,136 @@
-##### Custom Training Loops #####
+#### Tracking metrics in custom training loops #####
 import tensorflow as tf
-import numpy as np
-import matplotlib.pyplot as plt
-import time
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Layer, Softmax
 from tensorflow.keras.datasets import reuters
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.layers import Embedding, GRU, Bidirectional, Dense
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.losses import SparseCategoricalCrossentropy
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.metrics import Mean, AUC
+from tensorflow import GradientTape
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
 
-### We will create the custom layers (accepting variable input shape) and the custom model.
-class MyLayer(Layer):
-    def __init__(self, units):
-        super(MyLayer, self).__init__()
-        self.units = units
-    def build(self, input_shape):
-        self.w = self.add_weight(shape=(input_shape[-1], self.units), initializer='random_normal', name='kernel')
-        self.b = self.add_weight(shape=(self.units,), initializer='zeros', name='bias')
-    def call(self, inputs):
-        return tf.matmul(inputs, self.w) + self.b
-
-class MyDropout(Layer):
-    def __init__(self, rate):
-        super(MyDropout, self).__init__()
-        self.rate = rate
-    def call(self, inputs):
-        return tf.nn.dropout(inputs, rate=self.rate)
-
-class MyModel(Model):
-    def __init__(self, units1, units2, units3):
-        super (MyModel, self).__init__()
-        self.layer1 = MyLayer(units1)
-        self.dropout1 = MyDropout(0.5)
-        self.layer2 = MyLayer(units2)
-        self.dropout2 = MyDropout(0.5)
-        self.layer3 = MyLayer(units3)
-        self.softmax = Softmax()
-    def call(self, inputs):
-        x = self.layer1(inputs)
-        x = self.dropout1(x)
-        x = self.layer2(x)
-        x = self.dropout2(x)
-        x = self.layer3(x)
-        return self.softmax(x)
-
-### Now we instanciate a model with the inputs according to the Reuters dataset.
-model = MyModel(64, 64, 46)
-print(model(tf.ones((1,10000))))
-model.summary()
-
-### Now we load the Reuters dataset
-(traindata, trainlabels), (testdata, testlabels) = reuters.load_data(num_words=10000)
+(train_data, train_labels), (test_data, test_labels) = reuters.load_data(num_words=10000, skip_top=50)
 class_names = ['cocoa','grain','veg-oil','earn','acq','wheat','copper','housing','money-supply',
    'coffee','sugar','trade','reserves','ship','cotton','carcass','crude','nat-gas',
    'cpi','money-fx','interest','gnp','meal-feed','alum','oilseed','gold','tin',
    'strategic-metal','livestock','retail','ipi','iron-steel','rubber','heat','jobs',
    'lei','bop','zinc','orange','pet-chem','dlr','gas','silver','wpi','hog','lead']
 
-print('Label: {}'.format(class_names[trainlabels[0]]))
-# earn
+padded_train_data = pad_sequences(train_data, maxlen=100, truncating='post')
+padded_test_data = pad_sequences(test_data, maxlen=100, truncating='post')
 
-word_to_index = reuters.get_word_index()
-invert_word_to_index = dict([(value,key) for (key,value) in word_to_index.items()])
-text_news = ' '.join([invert_word_to_index.get(i-3, '?') for i in traindata[0]])
-print(text_news)
-'''? ? ? said as a result of its december acquisition of space co it expects earnings per share in 1987 
-of 1 15 to 1 30 dlrs per share up from 70 cts in 1986 the company said pretax net should rise to nine 
-to 10 mln dlrs from six mln dlrs in 1986 and rental operation revenues to 19 to 22 mln dlrs from 12 5 mln 
-dlrs it said cash flow per share this year should be 2 50 to three dlrs reuter 3'''
+train_data, val_data, train_labels, val_labels = train_test_split(padded_train_data, train_labels, test_size=0.3)
 
-
-### Preprocess the data
-def bag_of_words(text_samples, elements=10000):
-    output = np.zeros((len(text_samples), elements))
-    for i, word in enumerate(text_samples):
-        output[i, word] = 1.
-    return output
-x_train = bag_of_words(traindata)
-x_test = bag_of_words(testdata)
-
-print('Shape of x_train: ', x_train.shape)
-# Shape of x_train:  (8982, 10000)
-print('Shape of x_test: ', x_test.shape)
-# Shape of x_test:  (2246, 10000)
-
-
-### Define the "loss function" and compute "backward" and "forward" pass.
-loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
-
-def loss(model, x, y, wd):
-    kernel_variables = []
-    for l in model.layers:
-        for w in l.weights:
-            if 'kernel' in w.name:
-                kernel_variables.append(w)
-    wd_penalty = wd * tf.reduce_sum([tf.reduce_sum(tf.square(k)) for k in kernel_variables])
-    y_ = model(x)
-    return loss_object(y_true=y, y_pred=y_) + wd_penalty
-
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-
-
-### Train the model
-def grad(model, inputs, targets, wd):
-    with tf.GradientTape() as tape:
-        loss_value = loss(model, inputs, targets, wd)
-    return loss_value, tape.gradient(loss_value, model.trainable_variables)
-
-start_time = time.time()
-
-train_dataset = tf.data.Dataset.from_tensor_slices((x_train, trainlabels))
+train_dataset = tf.data.Dataset.from_tensor_slices((train_data, train_labels))
 train_dataset = train_dataset.batch(32)
+test_dataset = tf.data.Dataset.from_tensor_slices((padded_test_data, test_labels))
+test_dataset = test_dataset.batch(32)
+val_dataset = tf.data.Dataset.from_tensor_slices((val_data, val_labels))
+val_dataset = val_dataset.shuffle(500)
+val_dataset = val_dataset.batch(32)
 
-train_loss_results = [] # keep results for plotting
-train_accuracy_results = []
+class RNNModel (Model):
+    def __init__(self, units_1, units_2, num_classes, **kwargs):
+        super(RNNModel, self).__init__(**kwargs)
+        self.embedding = Embedding(input_dim=10000, output_dim=16, input_length=100)
+        self.gru_1 = Bidirectional(GRU(units_1, return_sequences=True), merge_mode='sum')
+        self.gru_2 = GRU(units_2)
+        self.dense = Dense(num_classes, activation='softmax')
+    def call(self, inputs):
+        h = self.embedding(inputs)
+        h = self.gru_1(h)
+        h = self.gru_2(h)
+        return self.dense(h)
 
-num_epochs = 10
-weight_decay = 0.005
+model = RNNModel(units_1=32, units_2=16, num_classes=46, name='rnn_model')
+optimizer = SGD(learning_rate=0.005, nesterov=True)
+loss = SparseCategoricalCrossentropy()
+
+
+### Custom Training Loop
+def grad(model, inputs, targets, loss):
+    with GradientTape() as tape:
+        preds = model(inputs)
+        loss_value = loss(targets, preds)
+    return preds, loss_value, tape.gradient(loss_value, model.trainable_variables)
+
+# Metric objects can be created and used to track performance measures in the custom training loop. We will set up our
+# custom training loop to track the average loss, and area under the ROC curve (ROC AUC). Of course there are many more
+# metrics that you could use.
+train_loss_results = []
+train_roc_auc_results = []
+val_loss_results = []
+val_roc_auc_results = []
+# In the following custom training loop, we define an outer loop for the epochs, and an inner loop for the batches
+# in the training dataset. At the end of each epoch we run a validation loop for a number of iterations.
+#
+# Inside the inner loop we use the metric objects to calculate the metric evaluation values.
+# These values are then appended to the empty lists. The metric objects are re-initialised at the start of each epoch.
+num_epochs = 5
+val_steps = 10
 
 for epoch in range(num_epochs):
-    epoch_loss_avg = tf.keras.metrics.Mean()
-    epoch_accuracy = tf.keras.metrics.CategoricalAccuracy()
+    train_epoch_loss_avg = Mean()
+    train_epoch_roc_auc = AUC(curve='ROC')
+    val_epoch_loss_avg = Mean()
+    val_epoch_roc_auc = AUC(curve='ROC')
 
-    for x, y in train_dataset: # Training Loop
-        loss_value, grads = grad(model, x, y, weight_decay) # Optimize the model
-        optimizer.apply_gradients(zip(grads, model.trainable_variables))
+    for inputs, labels in train_dataset:
+        model_preds, loss_value, grads = grad(model, inputs, labels, loss)
+        optimizer.apply_gradients((zip(grads, model.trainable_variables)))
 
-        epoch_loss_avg(loss_value) # Compute current loss
-        epoch_accuracy(to_categorical(y), model(x)) # Compare predicted label to actual label
+        train_epoch_loss_avg(loss_value)
+        train_epoch_roc_auc(to_categorical(labels, num_classes=46), model_preds)
 
-    train_loss_results.append(epoch_loss_avg.result()) # End Epoch
-    train_accuracy_results.append(epoch_accuracy.result())
-    print('Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}'.format(epoch, epoch_loss_avg.result(), epoch_accuracy.result()))
+    for inputs, labels in val_dataset.take(val_steps):
+        model_preds = model(inputs)
+        val_epoch_loss_avg(loss(labels, model_preds))
+        val_epoch_roc_auc(to_categorical(labels, num_classes=46), model_preds)
 
-print('Duration :{:.3f}'.format(time.time() - start_time))
-'''Epoch 000: Loss: 1.797, Accuracy: 67.836%
-Epoch 001: Loss: 1.701, Accuracy: 71.365%
-Epoch 002: Loss: 1.657, Accuracy: 73.469%
-Epoch 003: Loss: 1.638, Accuracy: 74.415%
-Epoch 004: Loss: 1.636, Accuracy: 75.529%
-Epoch 005: Loss: 1.608, Accuracy: 76.330%
-Epoch 006: Loss: 1.611, Accuracy: 76.531%
-Epoch 007: Loss: 1.601, Accuracy: 77.054%
-Epoch 008: Loss: 1.597, Accuracy: 77.310%
-Epoch 009: Loss: 1.585, Accuracy: 77.678%
-Duration :46.206'''
+    train_loss_results.append(val_epoch_loss_avg.result().numpy())
+    train_roc_auc_results.append(val_epoch_roc_auc.result().numpy())
+    val_loss_results.append(val_epoch_loss_avg.result().numpy())
+    val_roc_auc_results.append(val_epoch_roc_auc.result().numpy())
 
+    print("Epoch {:03d}: Training loss: {:.3f}, ROC AUC: {:.3%}".format(epoch, train_epoch_loss_avg.result(),
+                                                                        train_epoch_roc_auc.result()))
+    print("              Validation loss: {:.3f}, ROC AUC {:.3%}".format(val_epoch_loss_avg.result(),
+                                                                         val_epoch_roc_auc.result()))
 
-### Evaluate Model
-test_dataset = tf.data.Dataset.from_tensor_slices((x_test, testlabels))
-test_dataset = test_dataset.batch(32)
+# Plots
+fig = plt.figure(figsize=(15,5))
 
-epoch_loss_avg = tf.keras.metrics.Mean()
-epoch_accuracy = tf.keras.metrics.CategoricalAccuracy()
+fig.add_subplot(121)
+plt.plot(train_loss_results)
+plt.plot(val_loss_results)
+plt.title('Loss vs Epochs')
+plt.ylabel('Loss')
+plt.xlabel('Epochs')
+plt.legend(['Training', 'Validation'], loc='best')
 
-for x, y in test_dataset:
-    loss_value = loss(model, x, y, weight_decay)
-    epoch_loss_avg(loss_value)
-    epoch_accuracy(to_categorical(y), model(x))
-
-print('Test Loss: {:.3f}'.format(epoch_loss_avg.result().numpy()))
-# Test Loss: 1.786
-print('Test Accuracy: {:.3%}'.format(epoch_accuracy.result().numpy()))
-# Test Accuracy: 71.594%
-
-
-### Plots
-fig, axes = plt.subplots(2, sharex=True, figsize=(12,8))
-fig.suptitle('Training Metrics')
-
-axes[0].set_ylabel('Loss', fontsize=14)
-axes[0].plot(train_loss_results)
-
-axes[1].set_ylabel('Accuracy', fontsize=14)
-axes[1].set_xlabel('Epoch', fontsize=14)
-axes[1].plot(train_accuracy_results)
+fig.add_subplot(122)
+plt.plot(train_roc_auc_results)
+plt.plot(val_roc_auc_results)
+plt.title('ROC Accuracy vs Epoch')
+plt.ylabel('ROC Accuracy')
+plt.xlabel('Epochs')
+plt.legend(['Training', 'Validation'], loc='best')
 plt.show()
 
 
-### Predict from label
-predic_label = np.argmax(model(x_train[np.newaxis, 0]), axis=1)[0]
-print('Prediction: {}'.format(class_names[predic_label]))
-# Prediction: earn
-print('     Label: {}'.format(class_names[trainlabels[0]]))
-#      Label: earn
+### Testing the model
+test_epoch_loss_avg = Mean()
+test_epoch_roc_auc = AUC(curve='ROC')
 
+for inputs, labels in test_dataset:
+    model_preds = model(inputs)
+    test_epoch_loss_avg(loss(labels, model_preds))
+    test_epoch_roc_auc(to_categorical(labels, num_classes=46), model_preds)
+
+print("Test loss: {:.3f}".format(test_epoch_loss_avg.result().numpy()))
+# Test loss: 2.525
+print("Test ROC AUC: {:.3%}".format(test_epoch_roc_auc.result().numpy()))
+# Test ROC AUC: 85.936%
